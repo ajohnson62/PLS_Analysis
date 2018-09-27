@@ -114,7 +114,7 @@ corr_type <- 'envPartialCorrelationRegularized_z'
 #If you want to threshold it 
 use_mask <- FALSE
 mask <- data.frame(read.csv(paste(wd, freq_range, '/', 'groupEnvPartialCorrelation_z.csv', sep='' ), header=FALSE))
-z_thresh <- 3.0326
+z_thresh <- 4.6945
 mask[mask<z_thresh] <- 0
 mask[mask>=z_thresh] <- 1
 
@@ -154,7 +154,7 @@ for(imp in 1:5){
   mydata_fa_MEG[[imp]] <- merge(mydata_fa_MEG[[imp]],ID_brain,by='ID')
   mydata_fa_MEG[[imp]]$ID <- NULL
 }
-half_nets <- cbind(ID_brain,half_nets)
+half_nets <- cbind(ID_brain,data.frame(half_nets))
 half_nets <- merge(half_nets,ID_FA,by='ID')
 half_nets$ID <- NULL
 
@@ -169,8 +169,7 @@ for(imp in 1:5){
   academic[[imp]] <- mydata_fa_MEG[[imp]][,27:28] 
   behaviour[[imp]] <- mydata_fa_MEG[[imp]][,29:30] 
 }
-
-wd <- ("U:/Documents/ACE_Data/Thesis_Analysis/MI_PLS_MEG/results_non_sparse/")
+wd <- ("U:/Documents/ACE_Data/Thesis_Analysis/MI_PLS_MEG/results_sparse/")
 setwd(wd)
 
 ##### End MEG Connectome setup (MEG sample) ######
@@ -199,222 +198,281 @@ H <- NULL
 x_orig <- y_orig <- NULL
 signs_X <- NULL
 signs_Y <- NULL
-
+#keepX <- exp(seq(log(10), log(filter), length.out = 20))
 for(contrast in c(20)){
-  for(imp in 1:5){
-    if(contrast==1){  #PLS questionnaires- academic
-      x_orig[[imp]] <- cbind(questions[[imp]])
-      A <- 'Questions'
-      y_orig[[imp]] <- academic[[imp]]
-      B <- 'Academic' 
-    }
-    if(contrast==2){#PLS questionnaires- behaviour
-      x_orig[[imp]] <- cbind(questions[[imp]])
-      A <- 'Questions'
-      y_orig[[imp]] <- behaviour[[imp]]
-      B <- 'Behaviour'  
-    }
-    if(contrast==3){#PLS cog and questions
-      x_orig[[imp]] <- questions[[imp]]
-      A <- 'Questions'
-      y_orig[[imp]] <- cognitive[[imp]]
-      B <- 'Cognitive'  
-    }
-    if(contrast==4){#PLS Cog and outcome
-      x_orig[[imp]] <- cognitive[[imp]]
-      A <- 'Cognitive'
-      y_orig[[imp]] <- academic[[imp]]
-      B <- 'Academic'  
-    }
-    if(contrast==5){#PLS cog and outcome
-      x_orig[[imp]] <- cognitive[[imp]]
-      A <- 'Cognitive'
-      y_orig[[imp]] <- behaviour[[imp]]
-      B <- 'Behaviour'  
-    }
-    ##### MRI #####
-    if(contrast==10){#PLS global- questions
-      x_orig[[imp]] <- questions[[imp]]
-      A <- 'Questions'
-      y_orig[[imp]] <- graph_measures
-      B <- 'Global.connectome'
-    } 
-    if(contrast==11){#PLS node degree- questions
-      x_orig[[imp]] <- questions[[imp]]
-      A <- 'Questions'
-      y_orig[[imp]] <- node_degree
-      B <- 'Node.degree'
-    }
-    if(contrast==12){#PLS node_strength- questions
-      x_orig[[imp]] <- questions[[imp]]
-      A <- 'Questions'
-      y_orig[[imp]] <- node_strength
-      B <- 'Node.strength'
-    }
-    if(contrast==13){#PLS connection strength- questions
-      x_orig[[imp]] <- questions[[imp]]
-      A <- 'Questions'
-      y_orig[[imp]] <- half_nets
-      B <- 'Connection.strength'
-    }
-
-    #### MEG ####
-    if(contrast==20){#PLS connection strength - academic
-      x_orig[[imp]] <- questions[[imp]]
-      A <- 'Questions'
-      y_orig[[imp]] <- half_nets
-      B <- paste(freq_range, '_', corr_type,'_FDRmasked', sep='')
-    }
-   
-
-    #fit PLS
-    ncomp=min(cbind(ncol(x_orig[[imp]]),ncol(y_orig[[imp]])))
-    if(ncomp >5){
-      ncomp <- 5
-    }
-    ncomp <- 1
-    orig_fit[[imp]] <- pls(x_orig[[imp]], y_orig[[imp]],  mode = "canonical", ncomp =ncomp, scale=TRUE, all.outputs=TRUE, max.iter = 1000)
-    #Note, don't use procrustes at this point as we're comparing singular values an procrustes reduces these
-    orig_cov_LV[[imp]] <- diag(cov(orig_fit[[imp]]$variates$X, orig_fit[[imp]]$variates$Y)) #Covariance between LV = Singular Value
-    orig_cor_LV[[imp]] <- diag(cor(orig_fit[[imp]]$variates$X, orig_fit[[imp]]$variates$Y)) #Correlation between LV 
+  for(filter in c(100,500, 1000, ncol(half_nets))){
+    keepX <- c(0.01, 0.05, 0.1, 0.25, 0.50, 0.75, 1)*filter
     
-    #Fit PLS model to permuted data to get p values
-    for (i in 1:nperm){
-      if(i == 1){
-        print(A)
-        print(B)
-        print(imp)
-      }
-      if(i == seq(0,nperm,50)){
-        print(i)
-      }
-      if(imp ==1){
-        sample_for_perm[[i]] <- sample(nrow(x_orig[[imp]])) #to enseure same sample is pulled out for each imputed set
-      }
-      x_perm <- x_orig[[imp]][sample_for_perm[[i]],] #Permuted data
-      perm_fit[[imp]] <- pls(x_perm, y_orig[[imp]],  mode = "canonical", ncomp = ncomp, scale=TRUE, max.iter = 1000)
-      if(i ==1){
-        permuted_cov_LV[[imp]] <- diag(cov(perm_fit[[imp]]$variates$X, perm_fit[[imp]]$variates$Y))
-        permuted_cor_LV[[imp]] <- diag(cor(perm_fit[[imp]]$variates$X, perm_fit[[imp]]$variates$Y))
-      }
-      else{
-        x_perm_orig <- x_orig[[1]][sample_for_perm[[i]],] #Permuted data
-        perm_fit_orig <- pls(x_perm_orig, y_orig[[1]],  mode = "canonical", ncomp = ncomp, scale=TRUE, max.iter = 1000)
-        #Note, don't use procrustes at this point as we're comparing singular values an procrustes reduces these
-        permuted_cov_LV[[imp]] <- rbind(permuted_cov_LV[[imp]],diag(cov(perm_fit[[imp]]$variates$X, perm_fit[[imp]]$variates$Y)))
-        permuted_cor_LV[[imp]] <- rbind(permuted_cor_LV[[imp]],diag(cor(perm_fit[[imp]]$variates$X, perm_fit[[imp]]$variates$Y)))
-      }
-    }
-    for(comp in 1:ncomp){
-      if(comp ==1){
-        pval[[imp]] <- (sum(permuted_cov_LV[[imp]][,comp]>orig_cov_LV[[imp]][comp])+1)/(nperm + 1)
-        CI_upper[[imp]] <- data.frame(sort(permuted_cov_LV[[imp]][,comp], decreasing = TRUE))[n_CI,1]
-      }
-      else {
-        pval[[imp]] <- rbind(pval[[imp]],(sum(permuted_cov_LV[[imp]][,comp]>orig_cov_LV[[imp]][comp])+1)/(nperm + 1))
-        CI_upper[[imp]] <- rbind(CI_upper[[imp]],data.frame(sort(permuted_cov_LV[[imp]][,comp], decreasing = TRUE))[n_CI,1])
-      }
-    }
-    pval[[imp]] <- round(pval[[imp]], 6)
-    pval[[imp]] <- data.frame(cbind(1:ncomp, pval[[imp]]))
-  }
-  #Get pvals and CI for permutation
-  pvalues <- NULL
-  G <- NULL
-  H <- NULL
-  J <- NULL
-  for(imp in 1:5){
-    if(imp==1){
-      pvalues <- pval[[imp]][,2]
-      G <- CI_upper[[imp]]
-      H <- orig_cov_LV[[imp]]
-      J <- orig_cor_LV[[imp]]
+    for(select_x in keepX){
+      holdout <- createFolds(y =questions[[1]][,1], k=10,  list=TRUE) #Make sure use the same for each imp and param
+      for(imp in 1:5){
+        if(contrast==1){  #PLS questionnaires- academic
+          x_orig[[imp]] <- cbind(questions[[imp]])
+          A <- 'Questions'
+          y_orig[[imp]] <- academic[[imp]]
+          B <- 'Academic' 
+        }
+        if(contrast==2){#PLS questionnaires- behaviour
+          x_orig[[imp]] <- cbind(questions[[imp]])
+          A <- 'Questions'
+          y_orig[[imp]] <- behaviour[[imp]]
+          B <- 'Behaviour'  
+        }
+        if(contrast==3){#PLS cog and questions
+          x_orig[[imp]] <- questions[[imp]]
+          A <- 'Questions'
+          y_orig[[imp]] <- cognitive[[imp]]
+          B <- 'Cognitive'  
+        }
+        if(contrast==4){#PLS Cog and outcome
+          x_orig[[imp]] <- cognitive[[imp]]
+          A <- 'Cognitive'
+          y_orig[[imp]] <- academic[[imp]]
+          B <- 'Academic'  
+        }
+        if(contrast==5){#PLS cog and outcome
+          x_orig[[imp]] <- cognitive[[imp]]
+          A <- 'Cognitive'
+          y_orig[[imp]] <- behaviour[[imp]]
+          B <- 'Behaviour'  
+        }
+        ##### MRI #####
+        if(contrast==10){#PLS global- questions
+          x_orig[[imp]] <- questions[[imp]]
+          A <- 'Questions'
+          y_orig[[imp]] <- graph_measures
+          B <- 'Global.connectome'
+        } 
+        if(contrast==11){#PLS node degree- questions
+          x_orig[[imp]] <- questions[[imp]]
+          A <- 'Questions'
+          y_orig[[imp]] <- node_degree
+          B <- 'Node.degree'
+        }
+        if(contrast==12){#PLS node_strength- questions
+          x_orig[[imp]] <- questions[[imp]]
+          A <- 'Questions'
+          y_orig[[imp]] <- node_strength
+          B <- 'Node.strength'
+        }
+        if(contrast==13){#PLS connection strength- questions
+          x_orig[[imp]] <- questions[[imp]]
+          A <- 'Questions'
+          y_orig[[imp]] <- half_nets
+          B <- 'Connection.strength'
+        }
+        
+        #### MEG ####
+        if(contrast==20){#PLS connection strength - academic
+          x_orig[[imp]] <- questions[[imp]]
+          A <- 'Questions'
+          y_orig[[imp]] <- half_nets
+          B <- paste(freq_range, '_', corr_type, sep='')
+        }
+        
+        ncomp <- 1
+        #Create train/test split
+        for(cv in 1:10){
+          y_hold[[imp]] <- y_orig[[imp]][holdout[[cv]],]
+          x_hold[[imp]] <- x_orig[[imp]][holdout[[cv]],]
+          y_train[[imp]] <- y_orig[[imp]][-holdout[[cv]],]
+          x_train[[imp]] <- x_orig[[imp]][-holdout[[cv]],]
+          
+          preProc  <- preProcess(x_train[[imp]], method=c("center", "scale")) #This ensures that the hold out data is scaled using the tranformation used for the training set
+          x_train[[imp]] <- predict(preProc, x_train[[imp]])
+          x_hold[[imp]]  <- predict(preProc,  x_hold[[imp]])
+          preProc  <- preProcess(y_train[[imp]], method=c("center", "scale")) #This ensures that the  hold out data is scaled using the tranformation used for the training set
+          y_train[[imp]] <- predict(preProc, y_train[[imp]])
+          y_hold[[imp]]  <- predict(preProc,  y_hold[[imp]])
+          #Filter the data to include top correlations
+          orig_cov <- apply(cov(y_train[[imp]], x_train[[imp]]), 1, max)
+          y_orig_filter[[imp]] <- y_train[[imp]]
+          y_orig_filter[[imp]][,names(orig_cov[order(abs(orig_cov), decreasing = FALSE)])[1:(ncol(y_train[[imp]])-filter)]] <- rep(NA, nrow(y_train[[imp]]))
+          #Fit spls to training set
+          orig_fit[[imp]] <- spls(x_train[[imp]], y_orig_filter[[imp]],  keepY= select_x, mode = "canonical", ncomp =comp,  scale=TRUE)
+          hold_fit$variates$X <- as.matrix(x_hold[[imp]])%*%as.matrix(orig_fit[[imp]]$loadings.star[[1]])
+          hold_fit$variates$Y <- as.matrix(y_hold[[imp]])%*%as.matrix(orig_fit[[imp]]$loadings.star[[2]])
+          #Calculate cov and corr
+          if(cv ==1){
+            orig_cov_LV[[imp]] <- diag(cov(orig_fit[[imp]]$variates$X, orig_fit[[imp]]$variates$Y)) #Covariance between LV = Singular Value
+            orig_cor_LV[[imp]] <- diag(cor(orig_fit[[imp]]$variates$X, orig_fit[[imp]]$variates$Y)) #Correlation between LV
+            hold_cov_LV[[imp]] <- diag(cov(hold_fit$variates$X, hold_fit$variates$Y)) #Covariance between LV = Singular Value
+            hold_cor_LV[[imp]] <- diag(cor(hold_fit$variates$X, hold_fit$variates$Y)) #Correlation between LV 
+          }
+          if(cv>1){
+            orig_cov_LV[[imp]] <- orig_cov_LV[[imp]]+diag(cov(orig_fit[[imp]]$variates$X, orig_fit[[imp]]$variates$Y)) #Covariance between LV = Singular Value
+            orig_cor_LV[[imp]] <- orig_cor_LV[[imp]]+diag(cor(orig_fit[[imp]]$variates$X, orig_fit[[imp]]$variates$Y)) #Correlation between LV
+            hold_cov_LV[[imp]] <- hold_cov_LV[[imp]]+diag(cov(hold_fit$variates$X, hold_fit$variates$Y)) #Covariance between LV = Singular Value
+            hold_cor_LV[[imp]] <- hold_cor_LV[[imp]]+diag(cor(hold_fit$variates$X, hold_fit$variates$Y)) #Correlation between LV 
+          }
+
+        }
+        orig_cov_LV[[imp]] <- orig_cov_LV[[imp]]/10
+        orig_cor_LV[[imp]] <- orig_cor_LV[[imp]]/10
+        hold_cov_LV[[imp]] <- hold_cov_LV[[imp]]/10
+        hold_cor_LV[[imp]] <- hold_cor_LV[[imp]]/10
+
       
-      
+        
+        #Fit PLS model to permuted data to get p values
+        for (i in 1:nperm){
+          if(i == 1){
+            print(A)
+            print(B)
+            print(imp)
+            print(select_x)
+          }
+          if(i == seq(0,nperm,50)){
+            print(i)
+          }
+          if(imp ==1){
+            sample_for_perm[[i]] <- sample(nrow(x_orig[[imp]])) #to enseure same sample is pulled out for each imputed set
+          }
+          x_perm <- x_orig[[imp]][sample_for_perm[[i]],] #Permuted data
+          for(cv in 1:10){
+            y_hold[[imp]] <- y_orig[[imp]][holdout[[cv]],]
+            x_hold[[imp]] <- x_perm[holdout[[cv]],]
+            y_train[[imp]] <- y_orig[[imp]][-holdout[[cv]],]
+            x_train[[imp]] <- x_perm[-holdout[[cv]],]
+            perm_corr <- apply(cor(y_train[[imp]],x_train[[imp]]), 1, max)
+            y_perm_filter[[imp]] <- y_train[[imp]]
+            y_perm_filter[[imp]][,names(perm_corr[order(abs(perm_corr), decreasing = FALSE)])[1:(ncol(y_train[[imp]])-filter)]] <- rep(NA, nrow(y_train[[imp]]))
+            
+            perm_fit[[imp]] <- spls(x_train[[imp]], y_perm_filter[[imp]],  mode = "canonical", ncomp = ncomp, scale=TRUE, max.iter = 1000,keepY=select_x)
+            hold_fit$variates$X <- as.matrix(x_hold[[imp]])%*%as.matrix(perm_fit[[imp]]$loadings.star[[1]])
+            hold_fit$variates$Y <- as.matrix(y_hold[[imp]])%*%as.matrix(perm_fit[[imp]]$loadings.star[[2]])
+            if(cv ==1){
+              hold_cov_LV <- diag(cov(hold_fit$variates$X, hold_fit$variates$Y)) #Covariance between LV = Singular Value
+              hold_cor_LV <- diag(cor(hold_fit$variates$X, hold_fit$variates$Y)) #Correlation between LV 
+            }
+            if(cv>1){
+              hold_cov_LV <- hold_cov_LV+diag(cov(hold_fit$variates$X, hold_fit$variates$Y)) #Covariance between LV = Singular Value
+              hold_cor_LV <- hold_cor_LV+diag(cor(hold_fit$variates$X, hold_fit$variates$Y)) #Correlation between LV 
+            }
+            
+          }
+          hold_cov_LV <- hold_cov_LV/10
+          hold_cor_LV <- hold_cor_LV/10
+            
+          
+          
+          if(i ==1){
+            permuted_cov_LV <- hold_cov_LV
+            permuted_cor_LV <- hold_cov_LV
+          }
+          else{
+
+            permuted_cov_LV[[imp]] <- rbind(permuted_cov_LV[[imp]],hold_cov_LV)
+            permuted_cor_LV[[imp]] <- rbind(permuted_cor_LV[[imp]],hold_cov_LV)
+          }
+        }
+        for(comp in 1:ncomp){
+          if(comp ==1){
+            pval[[imp]] <- (sum(permuted_cov_LV[[imp]][,comp]>orig_cov_LV[[imp]][comp])+1)/(nperm + 1)
+            CI_upper[[imp]] <- data.frame(sort(permuted_cov_LV[[imp]][,comp], decreasing = TRUE))[n_CI,1]
+          }
+          else {
+            pval[[imp]] <- rbind(pval[[imp]],(sum(permuted_cov_LV[[imp]][,comp]>orig_cov_LV[[imp]][comp])+1)/(nperm + 1))
+            CI_upper[[imp]] <- rbind(CI_upper[[imp]],data.frame(sort(permuted_cov_LV[[imp]][,comp], decreasing = TRUE))[n_CI,1])
+          }
+        }
+        pval[[imp]] <- round(pval[[imp]], 6)
+        pval[[imp]] <- data.frame(cbind(1:ncomp, pval[[imp]]))
+      }
+      #Get pvals and CI for permutation
+      pvalues <- NULL
+      G <- NULL
+      H <- NULL
+      J <- NULL
+      for(imp in 1:5){
+        if(imp==1){
+          pvalues <- pval[[imp]][,2]
+          G <- CI_upper[[imp]]
+          H <- orig_cov_LV[[imp]]
+          J <- orig_cor_LV[[imp]]
+          
+          
+        }
+        if(imp>1){
+          pvalues <-cbind(pvalues,pval[[imp]][,2])
+          G <- G + CI_upper[[imp]]
+          H <- H+ orig_cov_LV[[imp]]
+          J <- J + orig_cor_LV[[imp]]
+        }
+      }
+      #Use Rubin's Z tranform method to pool p values
+      p_pooled <- NULL 
+      for(comp in 1:ncomp){
+        z <- qnorm(1-pvalues[comp,])  # transform to z-scale
+        zmean <- mean(z)
+        imp_var <- sum((zmean-z)^2)/(5-1)
+        total_var <- 1 + (1 + (1/5))*imp_var
+        p_pooled[comp] <- 1-pnorm( zmean / sqrt(total_var)) # average and transform back
+      }
+      if(select_x ==keepX[1]){
+        df <- cbind(select_x, data.frame(p_pooled), G/5, H/5, J/5)
+        colnames(df) <- c('keepX', 'p','Av.CI', 'Av.cov.LVs', 'Av.cor.LVs')
+      }
+      if(select_x >keepX[1]){
+        df_selectX <- cbind(select_x, data.frame(p_pooled), G/5, H/5, J/5)
+        colnames(df_selectX) <- c('keepX', 'p','Av.CI', 'Av.cov.LVs', 'Av.cor.LVs')
+        df <- rbind(df, df_selectX)
+      }
     }
-    if(imp>1){
-      pvalues <-cbind(pvalues,pval[[imp]][,2])
-      G <- G + CI_upper[[imp]]
-      H <- H+ orig_cov_LV[[imp]]
-      J <- J + orig_cor_LV[[imp]]
-    }
-  }
-  #Use Rubin's Z tranform method to pool p values
-  p_pooled <- NULL 
-  for(comp in 1:ncomp){
-    z <- qnorm(1-pvalues[comp,])  # transform to z-scale
-    zmean <- mean(z)
-    imp_var <- sum((zmean-z)^2)/(5-1)
-    total_var <- 1 + (1 + (1/5))*imp_var
-    p_pooled[comp] <- 1-pnorm( zmean / sqrt(total_var)) # average and transform back
-  }
-  av_pval <- cbind(c(1:ncomp), data.frame(p_pooled))
-  av_CI_upper <- G/5
-  av_orig_cov_LV <- H/5
-  av_orig_cor_LV <- J/5
-  
-  
-  fname <- paste(wd, '/' , A, '_', B,'_pvals_CI_and_av_cov_LVs.csv', sep='' )
-  df <- cbind(av_pval,av_CI_upper, av_orig_cov_LV, av_orig_cor_LV)
-  colnames(df) <- c('comp', 'p','Av.CI', 'Av.cov.LVs', 'Av.cor.LVs')
-  write.csv(df, file = fname)
-  
-  fname <- paste(wd, '/' , A, '_', B,'_pvals_each_imputation.csv', sep='' )
-  df <- cbind(c(1:ncomp), pvalues)
-  colnames(df) <- c('comp', 'imp 1', 'imp 2', 'imp 3', 'imp 4', 'imp 5')
-  write.csv(df, file = fname)
-  
-  #Save results 
-  exp_var <- cbind(data.frame(round(orig_fit[[1]]$explained_variance$X,4)),data.frame(round(orig_fit[[1]]$explained_variance$Y,4)))
-  for(imp in 2:5){
-    exp_var <- cbind(exp_var, data.frame(round(orig_fit[[imp]]$explained_variance$X,4)),data.frame(round(orig_fit[[imp]]$explained_variance$Y,4)))
-  }
-  colnames_all <- rep(c(A,B),5)
-  colnames(exp_var) <- colnames_all
-  fname <- paste(wd, '/' , A, '_', B,'_exp_var.csv', sep='' )
-  write.csv(exp_var, file = fname)
-  
-  #flip <- sign(orig_fit[[1]]$loadings$Y[1,1])
-  for(comp in 1:ncomp){
-    variate <- cbind(data.frame(flip*orig_fit[[1]]$variates$X[,comp]),data.frame(flip*orig_fit[[1]]$variates$Y[,comp]))
+    
+    fname <- paste(wd, '/' , A, '_', B,'_filter_', filter,  '_pvals_CI_and_av_cov_LVs_per_sparsity.csv', sep='' )
+    write.csv(df, file = fname)
+    
+    ggplot(df, aes(x=keepX, y=p))+
+      geom_line()+
+      xlab("Selected variables") + 
+      ylab("P Value") +
+      #scale_x_continuous(breaks = seq(1, ncomp, by = 1))+
+      #scale_fill_manual(values=c( "#999999", "#ec6c20")) +
+      theme_minimal(base_size=15)+
+      theme(axis.text.x = element_text(size=10, hjust=1), axis.text.y = element_text(size=10, hjust=1))+
+      guides(fill=FALSE)
+    fname <- paste(wd, '/' , A, '_', B,'_filter_', filter,'_pvals_sparsity.png', sep='' )
+    ggsave(fname, width = 15, height = 5, units = "cm")
+    
+    
+    #Save results 
+    exp_var <- cbind(data.frame(round(orig_fit[[1]]$explained_variance$X,4)),data.frame(round(orig_fit[[1]]$explained_variance$Y,4)))
     for(imp in 2:5){
-      variate <- cbind(variate,data.frame(flip*orig_fit[[imp]]$variates$X[,comp]),data.frame(flip*orig_fit[[imp]]$variates$Y[,comp]))
+      exp_var <- cbind(exp_var, data.frame(round(orig_fit[[imp]]$explained_variance$X,4)),data.frame(round(orig_fit[[imp]]$explained_variance$Y,4)))
     }
-    colnames(variate) <- colnames_all
-    fname <- paste(wd, '/' ,A, '_', B,'_LV_', comp, '.csv', sep='' )
-    write.csv(variate, file = fname)
+    colnames_all <- rep(c(A,B),5)
+    colnames(exp_var) <- colnames_all
+    fname <- paste(wd, '/' , A, '_', B,'_filter_', filter,'_exp_var.csv', sep='' )
+    write.csv(exp_var, file = fname)
+    
+    #flip <- sign(orig_fit[[1]]$loadings$Y[1,1])
+    for(comp in 1:ncomp){
+      variate <- cbind(data.frame(flip*orig_fit[[1]]$variates$X[,comp]),data.frame(flip*orig_fit[[1]]$variates$Y[,comp]))
+      for(imp in 2:5){
+        variate <- cbind(variate,data.frame(flip*orig_fit[[imp]]$variates$X[,comp]),data.frame(flip*orig_fit[[imp]]$variates$Y[,comp]))
+      }
+      colnames(variate) <- colnames_all
+      fname <- paste(wd, '/' ,A, '_', B,'_filter_', filter,'_LV_', comp, '.csv', sep='' )
+      write.csv(variate, file = fname)
+    }
+    
+   
+    #Plot components with CI
+    CI_lower = rep(0, length(df$keepX))
+    ggplot(df) + 
+      geom_line(aes(x=df$keepX,y=df$Av.cov.LVs), colour="#ec6c20") + 
+      geom_ribbon(aes(x=df$keepX,ymin=CI_lower, ymax=df$Av.CI), alpha=0.2)  + 
+      xlab("Selected variables") + 
+      ylab("Covariance between LVs")+
+      scale_x_continuous(breaks = seq(1, ncomp, by = 1)) +
+      theme_minimal(base_size=15)+
+      theme(axis.text.x = element_text(size=10, hjust=1), axis.text.y = element_text(size=10, hjust=1))
+    fname <- paste(wd, '/' , A, '_', B,'_filter_', filter,'_SVs.png', sep='' )
+    ggsave(fname, width = 15, height = 10, units = "cm")
+    
   }
-  
-  av_pval_group <- data.frame(rep(1,nrow(av_pval))) #To get rule of thumb reliable loadings
-  av_pval_group[which(av_pval[,2] > 0.05),] <- 0
-  av_pval <- cbind(av_pval, av_pval_group)
-  colnames(av_pval) <- c('X1', 'X2', 'significant')
-  av_pval$significant <- as.factor(av_pval$significant)
-  
-  ggplot(av_pval, aes(X1,X2, fill=significant)) + 
-    geom_bar(stat="identity") + 
-    xlab("Component") + 
-    ylab("P Value") +
-    scale_x_continuous(breaks = seq(1, ncomp, by = 1))+
-    scale_fill_manual(values=c( "#999999", "#ec6c20")) +
-    theme_minimal(base_size=15)+
-    theme(axis.text.x = element_text(size=10, hjust=1), axis.text.y = element_text(size=10, hjust=1))+
-    guides(fill=FALSE)
-  fname <- paste(wd, '/' , A, '_', B,'_pvals.png', sep='' )
-  ggsave(fname, width = 10, height = 10, units = "cm")
-  #Plot components with CI
-  CI_lower = rep(0, ncomp)
-  ggplot(data.frame(av_orig_cov_LV), aes(av_orig_cov_LV)) + 
-    geom_line(aes(x=1:ncomp,y=av_orig_cov_LV), colour="#ec6c20") + 
-    geom_ribbon(aes(x=1:ncomp,ymin=CI_lower, ymax=av_CI_upper), alpha=0.2)  + 
-    xlab("Component") + 
-    ylab("Covariance between LVs")+
-    scale_x_continuous(breaks = seq(1, ncomp, by = 1)) +
-    theme_minimal(base_size=15)+
-    theme(axis.text.x = element_text(size=10, hjust=1), axis.text.y = element_text(size=10, hjust=1))
-  fname <- paste(wd, '/' , A, '_', B,'_SVs.png', sep='' )
-  ggsave(fname, width = 20, height = 10, units = "cm")
-  
+    
 }
 
 ###########Bootstrap #######################
@@ -501,7 +559,7 @@ for(contrast in c(20)){
       x_orig[[imp]] <- questions[[imp]]
       A <- 'Questions'
       y_orig[[imp]] <- half_nets
-      B <- paste(freq_range, '_', corr_type,'_FDRmasked', sep='')
+      B <- paste(freq_range, '_', corr_type, sep='')
       nnodes <- 68
       labels_brain <- labels_68
       brain_vis <- TRUE
@@ -509,7 +567,7 @@ for(contrast in c(20)){
   }
   
   #### Run PLS ####
-  ncomp = 1
+  ncomp = 2
   for(comp in 1:ncomp){
     for(imp in 1:5){
       print(A)
@@ -674,8 +732,8 @@ for(contrast in c(20)){
         load_list <- c('load', 'load_star', 'load_cor')
       }
     }
-    if(brain_vis == TRUE){  
-    load_list <- c('load') 
+    if(brain_vis == FALSE){  
+    load_list <- c('load') #As load star= load for the first component
     }
     
     for(load_type in load_list){
@@ -699,7 +757,7 @@ for(contrast in c(20)){
       Y_ratio_group[which(Y_ratio < qt(1-(0.05/2),(nrow(x_orig[[imp]])-1))),] <- 0
       for_brain_plot <- av_X_boot_result*X_ratio_group
       
-      #flip <- sign(orig_fit[[1]]$loadings$Y[1,1])
+      flip <- sign(orig_fit[[1]]$loadings$Y[1,1])
       av_X_boot_result <- flip*av_X_boot_result
       av_Y_boot_result <- flip*av_Y_boot_result
       X_load <- NULL
